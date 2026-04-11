@@ -16,7 +16,7 @@ export class AxtBase {
     const blockDefinition = {
       ...info,
       opcode: fullOpcode,
-      text: info.text,
+      text: info.text || `${blockId}`,
       func: fullOpcode,
     };
 

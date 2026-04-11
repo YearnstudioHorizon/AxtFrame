@@ -7,6 +7,7 @@ export function select(items) {
 
     readline.emitKeypressEvents(process.stdin);
     if (process.stdin.isTTY) process.stdin.setRawMode(true);
+    process.stdin.resume();
 
     function render() {
       console.clear();

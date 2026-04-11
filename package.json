@@ -4,6 +4,7 @@
   "description": "TurboWarp Extension powered by AxtFrame",
   "main": "src/index.js",
   "scripts": {
+    "postinstall": "node init.js",
     "dev": "node scripts/dev.js",
     "build": "node scripts/builder.js"
   },

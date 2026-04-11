@@ -5,6 +5,7 @@
 import fs from "fs";
 import path from "path";
 import esbuild from "esbuild";
+import { pathToFileURL } from "url";
 
 const config = JSON.parse(fs.readFileSync("./axt.config.json", "utf-8"));
 
@@ -75,26 +76,78 @@ function countBlocks(items) {
 }
 
 // ─── generateEntry ─────────────────────────────────────────────
-function generateEntry(structure, onBlock) {
+async function generateEntry(structure, onBlock) {
   let imports = [];
   let registrations = [];
   let blockCounter = 0;
 
-  function walk(items) {
-    items.forEach((item) => {
+  // 验证块文件的导出
+  async function validateBlock(filePath, blockId) {
+    try {
+      // 在全局提供 Scratch 对象供块文件使用
+      global.Scratch = {
+        BlockType: {
+          COMMAND: "command",
+          REPORTER: "reporter",
+          BOOLEAN: "Boolean",
+          HAT: "hat",
+          EVENT: "event",
+        },
+      };
+
+      const modulePath = path.resolve(filePath);
+      // 将本地路径转换为标准的 file:// URL，并追加时间戳破坏 ESM 缓存
+      const fileUrl = pathToFileURL(modulePath).href;
+      const module = await import(`${fileUrl}?t=${Date.now()}`);
+
+      if (!module.info) {
+        throw new Error(`Missing 'info' export`);
+      }
+
+      if (typeof module.info !== "object") {
+        throw new Error(`'info' must be an object, got ${typeof module.info}`);
+      }
+
+      if (!module.info.text) {
+        process.stdout.write("\r\x1b[2K"); // 清除当前进度条所在的行
+        console.warn(
+          `\x1b[33m⚠ 警告:\x1b[0m 积木块 "${blockId}" 缺失 info.text 属性，将默认使用文件名`,
+        );
+      }
+
+      if (module.func && typeof module.func !== "function") {
+        process.stdout.write("\r\x1b[2K");
+        console.warn(
+          `\x1b[33m⚠ 警告:\x1b[0m 积木块 "${blockId}" 的 func 并不是一个函数`,
+        );
+      }
+    } catch (error) {
+      console.error(
+        `\x1b[31m✘\x1b[0m Validation failed for block "${blockId}" (${filePath}):`,
+      );
+      console.error(`   ${error.message}`);
+      process.exit(1);
+    }
+  }
+
+  async function walk(items) {
+    for (const item of items) {
       if (item.type === "block") {
+        // 在生成代码前先验证
+        await validateBlock(item.path, item.id);
+
         const varName = `block_${blockCounter++}`;
         imports.push(`import * as ${varName} from '../${item.path}';`);
         registrations.push(`this._registerBlock('${item.id}', ${varName});`);
         onBlock(item.id);
       } else if (item.type === "category") {
         registrations.push(`this._addLabel('${item.name}');`);
-        walk(item.children);
+        await walk(item.children);
       }
-    });
+    }
   }
 
-  walk(structure);
+  await walk(structure);
 
   const template = `
 import { AxtBase } from './core/BaseExtension';
@@ -135,7 +188,7 @@ async function build({ silent = false } = {}) {
   const total = countBlocks(structure);
   let processed = 0;
 
-  generateEntry(structure, (blockId) => {
+  await generateEntry(structure, (blockId) => {
     processed++;
     bar?.update(processed, total, blockId);
   });
