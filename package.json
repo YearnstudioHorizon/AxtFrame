@@ -1,0 +1,22 @@
+{
+  "name": "axt-frame-project",
+  "version": "1.0.0",
+  "description": "TurboWarp Extension powered by AxtFrame",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "build": "node scripts/builder.js"
+  },
+  "devDependencies": {
+    "cors": "^2.8.5",
+    "esbuild": "^0.20.0",
+    "express": "^4.18.2",
+    "ws": "^8.13.0"
+  },
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "figlet": "^1.11.0",
+    "open": "^11.0.0"
+  },
+  "type": "module"
+}

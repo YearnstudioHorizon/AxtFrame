@@ -1,0 +1,10 @@
+# 产物
+dist
+
+# 依赖
+node_modules
+
+# 临时文件
+*temp
+*temp*
+temp*
