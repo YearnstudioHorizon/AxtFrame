@@ -1,13 +1,15 @@
 (function () {
   "use strict";
+
   const TARGET_EXTENSION_ID = "{{EXTENSION_ID}}";
   const SERVER_PORT = 8000;
   const HTTP_URL = "http://127.0.0.1:" + SERVER_PORT;
   const WS_URL = "ws://127.0.0.1:" + SERVER_PORT;
 
   const Scratch = window.Scratch;
-  if (!Scratch || !Scratch.extensions.unsandboxed)
+  if (!Scratch || !Scratch.extensions.unsandboxed) {
     throw new Error("Need Unsandboxed Mode");
+  }
 
   class HotProxy {
     constructor() {
@@ -33,7 +35,7 @@
             {
               opcode: "__loading__",
               blockType: Scratch.BlockType.COMMAND,
-              text: "⏳ 正在拉取新代码...",
+              text: "正在拉取新代码...",
               func: "__loading__",
               arguments: {},
             },
@@ -48,7 +50,7 @@
       info.blocks.push({
         opcode: "__forceReload__",
         blockType: Scratch.BlockType.COMMAND,
-        text: "🔥 强制重载",
+        text: "强制重载",
         func: "__forceReload__",
       });
 
@@ -62,9 +64,10 @@
 
     __updateMethods(newTarget) {
       const proto = Object.getPrototypeOf(newTarget);
-      Object.getOwnPropertyNames(proto).forEach((k) => {
-        if (k !== "constructor" && k !== "getInfo")
-          this[k] = newTarget[k].bind(newTarget);
+      Object.getOwnPropertyNames(proto).forEach((key) => {
+        if (key !== "constructor" && key !== "getInfo") {
+          this[key] = newTarget[key].bind(newTarget);
+        }
       });
       this.target = newTarget;
     }
@@ -106,7 +109,7 @@
           if (Scratch.vm) {
             this.isLoading = true;
             Scratch.vm.extensionManager.refreshBlocks();
-            await new Promise((r) => setTimeout(r, 50));
+            await new Promise((resolve) => setTimeout(resolve, 50));
           }
 
           const cRes = await fetch(HTTP_URL + "/code.js?t=" + Date.now());
