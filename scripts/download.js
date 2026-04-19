@@ -1,3 +1,4 @@
+// @ts-nocheck
 // scripts/init.js
 import { existsSync, mkdirSync, createWriteStream } from "fs";
 import { join } from "path";
@@ -27,22 +28,30 @@ const dest = join(
 
 console.log(`[Init] 正在从 ${url} 下载二进制产物...`);
 
-const file = createWriteStream(dest);
-
-get(url, (response) => {
-  if (response.statusCode !== 200) {
-    console.error(`下载失败: ${response.statusCode}`);
-    process.exit(1);
-  }
-  response.pipe(file);
-  file.on("finish", () => {
-    file.close();
-    // Linux/macOS 需要赋予可执行权限
-    if (_platform() !== "win32") {
-      execSync(`chmod +x ${dest}`);
+function downloadFile(downloadUrl) {
+  get(downloadUrl, (response) => {
+    // 处理 301/302 重定向
+    if (response.statusCode === 301 || response.statusCode === 302) {
+      return downloadFile(response.headers.location);
     }
-    console.log(`[Init] 构建工具安装成功: ${dest}`);
+    if (response.statusCode !== 200) {
+      console.error(`下载失败: ${response.statusCode}`);
+      process.exit(1);
+    }
+
+    const file = createWriteStream(dest);
+    response.pipe(file);
+    file.on("finish", () => {
+      file.close();
+      // Linux/macOS 需要赋予可执行权限
+      if (_platform() !== "win32") {
+        execSync(`chmod +x ${dest}`);
+      }
+      console.log(`[Init] 构建工具安装成功: ${dest}`);
+    });
+  }).on("error", (err) => {
+    console.error(`网络错误: ${err.message}`);
   });
-}).on("error", (err) => {
-  console.error(`网络错误: ${err.message}`);
-});
+}
+
+downloadFile(url);
