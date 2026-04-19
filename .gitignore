@@ -3,6 +3,7 @@ dist
 
 # 依赖
 node_modules
+bin
 
 # 临时文件
 *temp

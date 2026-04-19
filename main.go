@@ -76,7 +76,7 @@ func (pb *ProgressBar) Update(current, total int64, msg string) {
 	pct := fmt.Sprintf("\x1b[1m%3.0f%%\x1b[0m", percent)
 	ratio := fmt.Sprintf("\x1b[90m%d/%d\x1b[0m", current, total)
 	timeStr := fmt.Sprintf("\x1b[33m%.1fs\x1b[0m", elapsed)
-	time.Sleep(time.Millisecond * 100)
+	// time.Sleep(time.Millisecond * 100)
 
 	// 输出到控制台
 	// \r 回到行首, \x1b[2K 清除当前行

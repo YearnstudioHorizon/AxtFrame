@@ -9,9 +9,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const platform = os.platform();
-const arch = os.arch();
 const ext = platform === "win32" ? ".exe" : "";
-const binaryName = `axt-builder-${platform}-${arch}${ext}`;
+const binaryName = `axt-builder${ext}`;
 const binaryPath = path.join(__dirname, "../bin", binaryName);
 const mainGoPath = path.join(__dirname, "../main.go");
 
