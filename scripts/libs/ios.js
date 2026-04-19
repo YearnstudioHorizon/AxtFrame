@@ -1,3 +1,4 @@
+// @ts-nocheck
 import readline from "readline";
 
 let rl = null;

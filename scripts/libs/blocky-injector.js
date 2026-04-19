@@ -1,3 +1,4 @@
+// @ts-nocheck
 let Inject;
 (() => {
   var e = {
@@ -117,13 +118,12 @@ let Inject;
             });
           }),
           (t.obtainBlockly = function (e) {
-            return (
-              (e?.scratchBlocks ||
-                e?.vm.scratchBlocks ||
-                e?.vm.runtime?.scratchBlocks ||
-                window.ScratchBlocks) ??
-              null
-            );
+            if (!e) return window.ScratchBlocks || null;
+            if (e.scratchBlocks) return e.scratchBlocks;
+            if (e.vm && e.vm.scratchBlocks) return e.vm.scratchBlocks;
+            if (e.vm && e.vm.runtime && e.vm.runtime.scratchBlocks)
+              return e.vm.runtime.scratchBlocks;
+            return window.ScratchBlocks || null;
           }));
       },
       486(e, t, n) {

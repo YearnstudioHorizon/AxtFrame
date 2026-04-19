@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleDetection": "force",
+    "checkJs": true,
+    "strict": true
+  },
+  "include": ["./**/*.js", "./extension.d.ts", "scripts/BaseExtension.ts"]
+}

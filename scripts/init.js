@@ -4,8 +4,8 @@ import { prompt } from "./libs/ios.js";
 import { writeFileSync, existsSync } from "fs";
 
 showBanner();
-if (existsSync("./axt.config.json")) {
-  console.log("检测到已有 axt.config.json，跳过初始化。");
+if (existsSync("./config.json")) {
+  console.log("检测到已有 config.json，跳过初始化。");
   console.log(" 如需重新初始化，请先删除该文件再运行 pnpm run init。");
   process.exit(0);
 }
@@ -20,10 +20,15 @@ const workId = await prompt("请输入扩展ID:", "axtProject");
 const workName = await prompt("请输入扩展名称:", "Axt Extension");
 
 // await new Promise((resolve) => setTimeout(resolve, 3000));
-const result = await select(["启用扩展热重载", "启动外源调用防护"]);
+const result = await select([
+  "启用扩展热重载",
+  "启动外源调用防护",
+  "使用旧版重载(不推荐)",
+]);
 
 let hotreload = false; // 是否启用扩展热重载
 let callprotect = false; // 是否启用外源调用防护
+let legacyreload = false; //启用旧版重载
 
 for (const item of result) {
   switch (item) {
@@ -32,6 +37,9 @@ for (const item of result) {
       break;
     case "启动外源调用防护":
       callprotect = true;
+      break;
+    case "使用旧版重载(不推荐)":
+      legacyreload = true;
       break;
   }
 }
@@ -42,7 +50,8 @@ const config = {
   version: "1.0.0",
   hotreload,
   callprotect,
+  legacyreload,
 };
 
-writeFileSync("./axt.config.json", JSON.stringify(config, null, 2), "utf-8");
-console.log("\n初始化完成，配置已写入 axt.config.json");
+writeFileSync("./config.json", JSON.stringify(config, null, 2), "utf-8");
+console.log("\n初始化完成，配置已写入 config.json");

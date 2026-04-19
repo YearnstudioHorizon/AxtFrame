@@ -1,5 +1,6 @@
 import readline from "readline";
 
+// @ts-ignore
 export function select(items) {
   return new Promise((resolve) => {
     let selectedIndex = 0;
@@ -12,6 +13,7 @@ export function select(items) {
     function render() {
       console.clear();
       console.log("↑↓ 移动  空格 选中  回车 确认\n");
+      // @ts-ignore
       items.forEach((item, i) => {
         const cursor = i === selectedIndex ? "▶" : " ";
         const check = selected.has(i) ? "✔" : "○";
@@ -19,6 +21,7 @@ export function select(items) {
       });
     }
 
+    // @ts-ignore
     function onKeypress(str, key) {
       if (key.ctrl && key.name === "c") process.exit();
 

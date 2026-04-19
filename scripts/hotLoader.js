@@ -1,3 +1,4 @@
+// @ts-nocheck
 (function () {
   "use strict";
 
@@ -5,6 +6,10 @@
   const SERVER_PORT = 8000;
   const HTTP_URL = "http://127.0.0.1:" + SERVER_PORT;
   const WS_URL = "ws://127.0.0.1:" + SERVER_PORT;
+  const queryString = window.location.search;
+  const urlParams = new URLSearchParams(queryString);
+  const useFullReload = urlParams.has("fullReload");
+  let firstLoad = true;
 
   const Scratch = window.Scratch;
   if (!Scratch || !Scratch.extensions.unsandboxed) {
@@ -63,12 +68,41 @@
     }
 
     __updateMethods(newTarget) {
-      const proto = Object.getPrototypeOf(newTarget);
-      Object.getOwnPropertyNames(proto).forEach((key) => {
-        if (key !== "constructor" && key !== "getInfo") {
+      // 清理掉旧的、由该函数动态添加的方法，防止旧积木函数残留
+      if (this.target && this.target.getInfo) {
+        const oldInfo = this.target.getInfo();
+        if (oldInfo && oldInfo.blocks) {
+          oldInfo.blocks.forEach((block) => {
+            if (
+              typeof block === "object" &&
+              block.opcode &&
+              Object.prototype.hasOwnProperty.call(this, block.opcode)
+            ) {
+              delete this[block.opcode];
+            }
+          });
+        }
+      }
+
+      // 递归地从新实例及其原型链上收集所有函数名
+      const keys = new Set();
+      let current = newTarget;
+      while (current && current !== Object.prototype) {
+        Object.getOwnPropertyNames(current).forEach((key) => keys.add(key));
+        current = Object.getPrototypeOf(current);
+      }
+
+      // 将所有函数绑定到新实例并复制到代理上
+      keys.forEach((key) => {
+        if (
+          key !== "constructor" &&
+          key !== "getInfo" &&
+          typeof newTarget[key] === "function"
+        ) {
           this[key] = newTarget[key].bind(newTarget);
         }
       });
+
       this.target = newTarget;
     }
 
@@ -81,10 +115,10 @@
     }
 
     tryWebSocket() {
-      console.log("[HotLoader] 尝试建立 WebSocket 连接...");
+      console.log("[AxtFrame] 尝试建立 WebSocket 连接...");
       this.ws = new WebSocket(WS_URL);
       this.ws.onopen = () => {
-        console.log("[HotLoader] WebSocket 连接成功");
+        console.log("[AxtFrame] WebSocket 连接成功");
         this.checkUpdate(true);
       };
       this.ws.onmessage = (event) => {
@@ -99,6 +133,18 @@
     }
 
     async checkUpdate(force = false) {
+      console.log(
+        "[Debug]是否使用刷新方式重载: ",
+        useFullReload,
+        ", 首次重载: ",
+        firstLoad,
+      );
+      if (useFullReload && !firstLoad) {
+        window.location.reload();
+        return;
+      }
+      firstLoad = false;
+
       try {
         const vRes = await fetch(HTTP_URL + "/version");
         const vData = await vRes.json();
@@ -136,7 +182,7 @@
           if (Scratch.vm) {
             this.isLoading = false;
             Scratch.vm.extensionManager.refreshBlocks();
-            console.log("[HotLoader] 热重载完成");
+            console.log("[AxtFrame] 热重载完成");
           }
         }
       } catch (e) {

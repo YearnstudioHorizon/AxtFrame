@@ -1,3 +1,4 @@
+// @ts-nocheck
 "use strict";
 import express from "express";
 import cors from "cors";
@@ -5,17 +6,16 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import readline from "readline";
-import { exec } from "child_process";
-import { WebSocketServer } from "ws";
+import { exec, spawn } from "child_process";
 import http from "http";
-import build from "./builder.js";
+import { WebSocketServer } from "ws";
 import { fileURLToPath } from "url";
+import showBanner from "./libs/banner.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// const config = require('../axt.config.json');
-const config = JSON.parse(fs.readFileSync("./axt.config.json", "utf-8"));
+const config = JSON.parse(fs.readFileSync("./config.json", "utf-8"));
 
 const app = express();
 app.use(cors());
@@ -24,7 +24,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 const PORT = 8000;
-const EXT_FILE = path.join(__dirname, "../dist/extension.js"); // ← 改成 dist
+const EXT_FILE = path.join(__dirname, "../dist/extension.js");
 const LOADER_FILE = path.join(__dirname, "hotLoader.js");
 
 const getHash = () => {
@@ -56,6 +56,27 @@ app.get("/extension.js", (req, res) => {
   }
 });
 
+const runBuilder = () => {
+  return new Promise((resolve, reject) => {
+    const builderProcess = spawn(
+      process.execPath,
+      [path.join(__dirname, "builder.js")],
+      {
+        stdio: "inherit",
+        env: { ...process.env, AXT_IS_CHILD: "true" },
+      },
+    );
+
+    builderProcess.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Builder process exited with code ${code}`));
+      }
+    });
+  });
+};
+
 const broadcastChange = (filename, size) => {
   const hash = getHash();
   const msg = JSON.stringify({ type: "change", hash });
@@ -73,23 +94,24 @@ const broadcastChange = (filename, size) => {
   });
 
   const time = new Date().toLocaleTimeString();
-  console.log(`\n\x1b[42m\x1b[30m [UPDATE] \x1b[0m \x1b[32m${time}\x1b[0m`);
-  console.log(`   文件: ${filename}  大小: ${sizeStr}`);
+  console.log(
+    `\n\x1b[42m\x1b[30m [UPDATE] \x1b[0m \x1b[32m${time}\x1b[0m 文件: ${filename}  大小: ${sizeStr}`,
+  );
 };
 
-// ─── 监听 src 目录，变化后重新构建 ───────────────────────────
+// 监听 src 目录，变化后重新构建
 let building = false;
 let pendingRebuild = false;
 
 async function rebuild(filename) {
   if (building) {
-    pendingRebuild = true; // 构建中又有变化，排队一次
+    pendingRebuild = true; // 构建中有变化，排队一次
     return;
   }
   building = true;
-  process.stdout.write(`\x1b[33m  rebuilding...\x1b[0m`);
+  process.stdout.write(`\x1b[33m  rebuilding\x1b[0m`);
   try {
-    await build();
+    await runBuilder();
     process.stdout.write(`\r\x1b[2K`);
     broadcastChange(filename);
   } catch (e) {
@@ -106,7 +128,7 @@ async function rebuild(filename) {
 
 let fsWait = false;
 fs.watch("./src", { recursive: true }, (event, filename) => {
-  if (!filename || filename.includes(".temp_entry")) return; // 忽略临时文件
+  if (!filename || filename.includes(".temp-entry")) return; // 忽略临时文件
   if (fsWait) return;
   fsWait = setTimeout(() => {
     fsWait = false;
@@ -114,18 +136,24 @@ fs.watch("./src", { recursive: true }, (event, filename) => {
   rebuild(filename);
 });
 
-// ─── 启动服务器 ───────────────────────────────────────────────
+let configWait = false;
+fs.watch("./config.json", (event, filename) => {
+  if (configWait) return;
+  configWait = true;
+  setTimeout(() => {
+    configWait = false;
+  }, 500);
+
+  console.log("\n\x1b[33m  检测到 config.json 变化，需要重启\x1b[0m");
+});
+
 server.listen(PORT, async () => {
   console.clear();
-  console.log(`\x1b[36m
-  ===========================================
-           AxtFrame  ·  ${config.name}
-  ===========================================
-\x1b[0m`);
+  showBanner();
 
-  process.stdout.write(`\x1b[33m  初始构建中...\x1b[0m`);
+  process.stdout.write(`\x1b[33m  初始构建中\x1b[0m`);
   try {
-    await build();
+    await runBuilder();
     process.stdout.write(
       `\r\x1b[2K\x1b[32m  ✔ 构建完成，正在监听 src/\x1b[0m\n`,
     );
@@ -133,8 +161,11 @@ server.listen(PORT, async () => {
     process.stdout.write(`\r\x1b[2K\x1b[31m  ✘ 初始构建失败\x1b[0m\n`);
     console.error(e.message);
   }
+  let autoOpenUrl = `https://turbowarp.org/editor?extension=http://localhost:${PORT}/extension.js`;
+  if (config.legacyreload) {
+    autoOpenUrl += "&fullReload=1";
+  }
 
-  const autoOpenUrl = `https://turbowarp.org/editor?extension=http://localhost:${PORT}/extension.js`;
   console.log("\n将会自动打开: " + autoOpenUrl);
 
   const rl = readline.createInterface({

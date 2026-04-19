@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "esModuleInterop": true,
+    "moduleDetection": "force",
+    "allowSyntheticDefaultImports": true,
+    "strict": true
+  },
+  "include": [
+    "src",
+    "extension.d.ts" // 手动声明的扩展 API 类型文件
+  ]
+}
