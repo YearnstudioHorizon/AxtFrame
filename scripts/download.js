@@ -6,7 +6,7 @@ const os = require("os");
 const { execSync } = require("child_process");
 
 const VERSION = "v1.0.0";
-const REPO = "YearnstudioHorizon/axtFrameNew";
+const REPO = "YearnstudioHorizon/axtFrame";
 const BIN_DIR = path.join(__dirname, "../bin");
 
 if (!fs.existsSync(BIN_DIR)) fs.mkdirSync(BIN_DIR);
