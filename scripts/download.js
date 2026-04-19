@@ -1,50 +1,48 @@
 // scripts/init.js
-const fs = require("fs");
-const path = require("path");
-const https = require("https");
-const os = require("os");
-const { execSync } = require("child_process");
+import { existsSync, mkdirSync, createWriteStream } from "fs";
+import { join } from "path";
+import { get } from "https";
+import { platform as _platform, arch as _arch } from "os";
+import { execSync } from "child_process";
 
-const VERSION = "v1.0.0";
+const VERSION = "v1.0.1";
 const REPO = "YearnstudioHorizon/axtFrame";
-const BIN_DIR = path.join(__dirname, "../bin");
+const BIN_DIR = join(import.meta.dirname, "../bin");
 
-if (!fs.existsSync(BIN_DIR)) fs.mkdirSync(BIN_DIR);
+if (!existsSync(BIN_DIR)) mkdirSync(BIN_DIR);
 
 function getBinaryName() {
-  const platform = os.platform();
-  const arch = os.arch();
+  const platform = _platform();
+  const arch = _arch();
   const ext = platform === "win32" ? ".exe" : "";
   return `axt-builder-${platform}-${arch}${ext}`;
 }
 
 const binaryName = getBinaryName();
 const url = `https://github.com/${REPO}/releases/download/${VERSION}/${binaryName}`;
-const dest = path.join(
+const dest = join(
   BIN_DIR,
-  "axt-builder" + (os.platform() === "win32" ? ".exe" : ""),
+  "axt-builder" + (_platform() === "win32" ? ".exe" : ""),
 );
 
 console.log(`[Init] 正在从 ${url} 下载二进制产物...`);
 
-const file = fs.createWriteStream(dest);
+const file = createWriteStream(dest);
 
-https
-  .get(url, (response) => {
-    if (response.statusCode !== 200) {
-      console.error(`下载失败: ${response.statusCode}`);
-      process.exit(1);
+get(url, (response) => {
+  if (response.statusCode !== 200) {
+    console.error(`下载失败: ${response.statusCode}`);
+    process.exit(1);
+  }
+  response.pipe(file);
+  file.on("finish", () => {
+    file.close();
+    // Linux/macOS 需要赋予可执行权限
+    if (_platform() !== "win32") {
+      execSync(`chmod +x ${dest}`);
     }
-    response.pipe(file);
-    file.on("finish", () => {
-      file.close();
-      // Linux/macOS 需要赋予可执行权限
-      if (os.platform() !== "win32") {
-        execSync(`chmod +x ${dest}`);
-      }
-      console.log(`[Init] 构建工具安装成功: ${dest}`);
-    });
-  })
-  .on("error", (err) => {
-    console.error(`网络错误: ${err.message}`);
+    console.log(`[Init] 构建工具安装成功: ${dest}`);
   });
+}).on("error", (err) => {
+  console.error(`网络错误: ${err.message}`);
+});
