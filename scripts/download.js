@@ -6,7 +6,7 @@ import { get } from "https";
 import { platform as _platform, arch as _arch } from "os";
 import { execSync } from "child_process";
 
-const VERSION = "v1.0.1";
+const VERSION = "v1.0.2";
 const REPO = "YearnstudioHorizon/axtFrame";
 const BIN_DIR = join(import.meta.dirname, "../bin");
 
