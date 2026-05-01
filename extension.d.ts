@@ -41,8 +41,9 @@ declare namespace Scratch {
     blockType: BlockType;
     text: string;
     arguments?: { [key: string]: ArgumentInfo };
-    func?: string; // 如果省略，则默认为 opcode
     branchMode?: "single" | "loop";
+    func?: string; // 如果省略，则默认为 opcode
+    index?: number;
   }
 
   /**

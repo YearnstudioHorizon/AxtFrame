@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -125,7 +126,7 @@ func isVaildBlockType(blockType string) bool {
 	return ok
 }
 
-func getValueFromPropertyList(value *[]ast.Property, name string) (*ast.Expression, bool) {
+func getPropertyFromList(value *[]ast.Property, name string) (*ast.PropertyKeyed, *ast.Expression, bool) {
 	for _, prop := range *value {
 		keyed, ok := prop.(*ast.PropertyKeyed)
 		if !ok {
@@ -134,19 +135,59 @@ func getValueFromPropertyList(value *[]ast.Property, name string) (*ast.Expressi
 		switch k := keyed.Key.(type) {
 		case *ast.StringLiteral:
 			if k.Value.String() == name {
-				return &keyed.Value, true
+				return keyed, &keyed.Value, true
 			}
 		case *ast.Identifier:
 			if k.Name.String() == name {
-				return &keyed.Value, true
+				return keyed, &keyed.Value, true
 			}
 		}
 	}
-	return nil, false
+	return nil, nil, false
+}
+
+func getValueFromPropertyList(value *[]ast.Property, name string) (*ast.Expression, bool) {
+	_, val, ok := getPropertyFromList(value, name)
+	return val, ok
 }
 
 func replaceSourceRange(source string, start, end int, replacement string) string {
 	return source[:start] + replacement + source[end:]
+}
+
+func removePropertyFromSource(source string, prop *ast.PropertyKeyed) string {
+	// goja 中 Idx 是以 1 为基准的索引，转换为基于 0 的字符串索引
+	start := int(prop.Idx0()) - 1
+	end := int(prop.Idx1()) - 1
+
+	nextCommaIdx := -1
+	for i := end; i < len(source); i++ {
+		if source[i] == ',' {
+			nextCommaIdx = i
+			break
+		} else if source[i] != ' ' && source[i] != '\t' && source[i] != '\r' && source[i] != '\n' {
+			break
+		}
+	}
+
+	if nextCommaIdx != -1 {
+		end = nextCommaIdx + 1
+	} else {
+		prevCommaIdx := -1
+		for i := start - 1; i >= 0; i-- {
+			if source[i] == ',' {
+				prevCommaIdx = i
+				break
+			} else if source[i] != ' ' && source[i] != '\t' && source[i] != '\r' && source[i] != '\n' {
+				break
+			}
+		}
+		if prevCommaIdx != -1 {
+			start = prevCommaIdx
+		}
+	}
+
+	return source[:start] + source[end:]
 }
 
 func appendPropertyToObjectLiteral(source string, obj *ast.ObjectLiteral, propertySource string) string {
@@ -193,6 +234,7 @@ var AllowedBlockTyps map[string]string = make(map[string]string)
 type BlockFile struct {
 	path   string
 	opcode string
+	index  int
 }
 
 func Compline(config *Config) *api.BuildResult {
@@ -308,8 +350,9 @@ func Compline(config *Config) *api.BuildResult {
 						hasBlockType := false // 是否存在blockType字段
 						hasFunc := false      // 是否有处理函数
 						var opcode string
-						isCommandBlock := false        // 是否为 COMMAND 类型的积木
-						var infoObj *ast.ObjectLiteral // 保存 info 对象的 AST 节点引用
+						isCommandBlock := false              // 是否为 COMMAND 类型的积木
+						var infoObj *ast.ObjectLiteral       // 保存 info 对象的 AST 节点引用
+						var indexPropNode *ast.PropertyKeyed // 保存 index 属性的 AST 节点
 						// exportedInfo := false // 是否导出了info
 						// exportedFunc := false // 是否导出了func
 						for _, stmt := range program.Body {
@@ -383,7 +426,7 @@ func Compline(config *Config) *api.BuildResult {
 										return api.OnLoadResult{}, fmt.Errorf("'info' lost opcode")
 									}
 									v, ok := (*value).(*ast.StringLiteral)
-									if !ok {
+									if !ok { // opcode类型不正确
 										return api.OnLoadResult{}, fmt.Errorf("opcode need a string value")
 									}
 									opcode = v.Value.String()
@@ -412,6 +455,44 @@ func Compline(config *Config) *api.BuildResult {
 										return api.OnLoadResult{}, fmt.Errorf("text need a string value")
 									}
 
+									// 获取index字段用于排序
+									indexPropNode, value, ok = getPropertyFromList(&obj.Value, "index")
+									if !ok {
+										// 注入默认index
+										blockFilesLock.Lock()
+										for k, v := range blockFiles {
+											if v.opcode == opcode {
+												// 是目标积木
+												blockFiles[k].index = 0
+											}
+										}
+										blockFilesLock.Unlock()
+									} else {
+										numLit, ok := (*value).(*ast.NumberLiteral)
+										if !ok {
+											return api.OnLoadResult{}, fmt.Errorf("index need a number value")
+										} else {
+											var parsedIndex int
+											switch v := numLit.Value.(type) {
+											case float64:
+												parsedIndex = int(v)
+											case int64:
+												parsedIndex = int(v)
+											case int:
+												parsedIndex = v
+											}
+											// 存在index
+											blockFilesLock.Lock()
+											for k, v := range blockFiles {
+												if v.opcode == opcode {
+													// 是目标积木
+													blockFiles[k].index = parsedIndex // 注入
+												}
+											}
+											blockFilesLock.Unlock()
+										}
+									}
+
 									// 确定func参数不存在
 									value, ok = getValueFromPropertyList(&obj.Value, "func")
 									if ok {
@@ -427,6 +508,44 @@ func Compline(config *Config) *api.BuildResult {
 
 						if !hasBlockType {
 							return api.OnLoadResult{}, fmt.Errorf("lost blockType")
+						}
+
+						// AST 切除 index 字段
+						if indexPropNode != nil {
+							jsContent = removePropertyFromSource(jsContent, indexPropNode)
+
+							// 由于字符串发生了变化，如果需要继续依赖 AST 的精确位置，我们需要重新解析以保证偏移量准确
+							if config.CallProtect && isCommandBlock {
+								var parseErr error
+								program, parseErr = parser.ParseFile(nil, args.Path, jsContent, 0)
+								if parseErr != nil {
+									return api.OnLoadResult{}, fmt.Errorf("AST Re-parsing failed: %v", parseErr)
+								}
+								// 重新获取 infoObj
+								for _, stmt := range program.Body {
+									var declarations []ast.Expression
+									var initializes []ast.Expression
+									switch decl := stmt.(type) {
+									case *ast.VariableStatement:
+										for _, v := range decl.List {
+											declarations = append(declarations, v.Target)
+											initializes = append(initializes, v.Initializer)
+										}
+									case *ast.LexicalDeclaration:
+										for _, v := range decl.List {
+											declarations = append(declarations, v.Target)
+											initializes = append(initializes, v.Initializer)
+										}
+									}
+									for index, target := range declarations {
+										id, ok := target.(*ast.Identifier)
+										if ok && id.Name == "info" {
+											infoObj, _ = initializes[index].(*ast.ObjectLiteral)
+											break
+										}
+									}
+								}
+							}
 						}
 
 						// 注入 CallProtect 逻辑：当配置开启且类型为COMMAND时注入 fields.secret = Math.random()
@@ -466,7 +585,11 @@ func Compline(config *Config) *api.BuildResult {
 	// sort.Strings(opcodes)
 	var importCommand string
 	var registerCommand string
-
+	// results := fmt.Sprintf("[Debug]最终列表: %v", blockFiles)
+	// os.WriteFile("./log.log", []byte(results), 0644)
+	sort.Slice(blockFiles, func(i, j int) bool {
+		return blockFiles[i].index < blockFiles[j].index
+	})
 	for k, v := range blockFiles {
 		importCommand += fmt.Sprintf("import * as block_%v from './%v';\n", k, v.path)
 		registerCommand += fmt.Sprintf("        this._registerBlock(\"%v\", block_%v);\n", v.opcode, k)
@@ -475,11 +598,11 @@ func Compline(config *Config) *api.BuildResult {
 	// 应用 config.json 中的配置，若为空则使用默认值
 	extID := config.ID
 	if extID == "" {
-		extID = "shangcloud"
+		extID = "axtframe"
 	}
 	extName := config.Name
 	if extName == "" {
-		extName = "ShangCloud"
+		extName = "Axt Frame"
 	}
 
 	var entryTemplate string = fmt.Sprintf(
